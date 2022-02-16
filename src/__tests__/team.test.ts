@@ -10,7 +10,7 @@ test('Team data direct', (done) => {
 });
 
 /**
- * Checking current teams in a player
+ * Checking current players in a team
  */
 test('Current players in Team', (done) => {
   Team.Get(1064).then((team) => {
