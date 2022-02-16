@@ -1,4 +1,4 @@
-"use strict";
+'use strict';
 
 export { Teams } from './lib/Teams';
 export { Team } from './lib/Team';

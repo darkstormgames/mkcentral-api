@@ -1,0 +1,10 @@
+{
+    "extends": ["tslint:recommended", "tslint-config-prettier"],
+    "rules": {
+        "prefer-const": false,
+        "triple-equals": false,
+        "no-namespace": false,
+        "no-string-literal": false,
+        "max-classes-per-file": false
+    }
+ }
