@@ -2,6 +2,8 @@ import { URL } from 'node:url';
 import { fetchHttpsContent } from './common/APIRequest';
 import { Player } from './Player';
 import { PlayerFilter } from './player/PlayerFilter';
+import { FriendCode } from './player/FriendCode';
+import { CountryCode } from './common/CountryCode';
 
 /**
  * Players is a typed array of Player items with extra metadata from the API.
@@ -156,5 +158,9 @@ export class Players extends Array<Player> {
 		if (!uri.searchParams.has('page')) uri.searchParams.set('page', '1');
 		return uri;
 	}
-}
 
+	public static readonly Filter = PlayerFilter;
+	public static readonly Item = Player;
+	public static readonly FriendCode = FriendCode;
+	public static readonly CountryCode = CountryCode;
+}

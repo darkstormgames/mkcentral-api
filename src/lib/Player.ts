@@ -142,8 +142,22 @@ export class Player {
 			throw new TypeError("playerId must be a valid number");
 		}
 		const url = `https://mkcentral.com/api/registry/players/${encodeURIComponent(playerId)}`;
-		const json = await fetchHttpsContent(url);
-		return new Player(json);
+		try {
+			const json = await fetchHttpsContent(url);
+			const trimmed = typeof json === "string" ? json.trim() : "";
+			if (!trimmed || trimmed === "null") {
+				throw new Error(
+					`Player with id ${playerId} was not found or no data was returned from the API`
+				);
+			}
+			return new Player(json);
+		} catch (err: any) {
+			// Provide a clearer not-found error while preserving typed HTTPError
+			if (err && err.name === "HTTPError" && err.statusCode === 404) {
+				err.message = `Player with id ${playerId} was not found (404)`;
+			}
+			throw err;
+		}
 	}
 
 	/**
@@ -178,4 +192,16 @@ export class Player {
 		this.DataKind = full.DataKind;
 		this.IsFull = full.IsFull;
 	}
+
+	// Namespaced static exports for convenient access in consumers
+	// Example: Player.FriendCode, Player.Role, Player.Roster, etc.
+	public static readonly DataKindEnum = PlayerDataKind;
+	public static readonly FriendCode = FriendCode;
+	public static readonly Discord = Discord;
+	public static readonly BanInfo = BanInfo;
+	public static readonly NameChange = NameChange;
+	public static readonly Role = Role;
+	public static readonly UserSettings = UserSettings;
+	public static readonly Roster = Roster;
+	public static readonly CountryCode = CountryCode;
 }

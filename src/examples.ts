@@ -1,10 +1,4 @@
 import { Player, Players, Team, Teams } from './index';
-import { PlayerFilter } from './lib/player/PlayerFilter';
-import { TeamFilter } from './lib/team/TeamFilter';
-import { CountryCode } from './lib/common/CountryCode';
-import { Game } from './lib/common/Game';
-import { GameMode } from './lib/common/GameMode';
-import { Language } from './lib/common/Language';
 
 // ============================================
 // PLAYER EXAMPLES
@@ -32,8 +26,8 @@ async function playerExamples() {
 
     // Example 3: Advanced filtering with PlayerFilter
     console.log('\n3. Filter players by country and game:');
-    const filter = new PlayerFilter({
-        Country: CountryCode.Germany,
+    const filter = new Players.Filter({
+        Country: Players.CountryCode.Germany,
         NameOrFC: 'Alex',
         Page: 1
     });
@@ -43,7 +37,8 @@ async function playerExamples() {
 
     // Example 4: Load partial player data to full
     console.log('\n4. Load partial player to full:');
-    const partialPlayers = await Players.Get('ABC');
+    console.log(' IsFull has some issues, still...');
+    const partialPlayers = await Players.Get('Alex');
     if (partialPlayers.length > 0) {
         const partial = partialPlayers[0];
         console.log(`Before Load - IsFull: ${partial.IsFull}`);
@@ -54,15 +49,10 @@ async function playerExamples() {
 
     // Example 5: Pagination through player results
     console.log('\n5. Pagination example:');
-    const paginatedFilter = new PlayerFilter({ NameOrFC: 'Mario', Page: 1 });
+    const paginatedFilter = new Players.Filter({ NameOrFC: 'Anna', Page: 1 });
     const paginatedResults = await Players.Get(paginatedFilter);
     console.log(`Page 1: ${paginatedResults.length} players`);
-    
-    // Debug: Check if LoadNextPage exists
-    console.log(`LoadNextPage type: ${typeof paginatedResults.LoadNextPage}`);
-    console.log(`Is Players instance: ${paginatedResults instanceof Players}`);
-    console.log(`Available methods: ${Object.getOwnPropertyNames(Object.getPrototypeOf(paginatedResults)).join(', ')}`);
-    
+
     if (typeof paginatedResults.LoadNextPage === 'function') {
         const hasNextPage = await paginatedResults.LoadNextPage();
         if (hasNextPage) {
@@ -74,7 +64,7 @@ async function playerExamples() {
 
     // Example 6: Load all pages at once
     console.log('\n6. Load all pages:');
-    const allPagesFilter = new PlayerFilter({ Country: CountryCode.Chile });
+    const allPagesFilter = new Players.Filter({ Country: Players.CountryCode.Chile });
     const allResults = await Players.Get(allPagesFilter);
     console.log(`Initial page has ${allResults.length} players`);
     await allResults.LoadAllPages();
@@ -136,11 +126,11 @@ async function teamExamples() {
 
     // Example 3: Filter teams with TeamFilter
     console.log('\n3. Filter teams:');
-    const teamFilter = new TeamFilter({
+    const teamFilter = new Teams.Filter({
         NameOrTag: 'Racing',
-        Game: Game.tryGet('mk8dx'),
-        Mode: GameMode.tryGet('150cc'),
-        Language: Language.EnglishSimplified,
+        Game: Teams.Game.MK8dx,
+        Mode: Teams.GameMode.CC150,
+        Language: Teams.Language.EnglishSimplified,
         Page: 1
     });
     const filteredTeams = await Teams.Get(teamFilter);
@@ -165,7 +155,7 @@ async function teamExamples() {
 
     // Example 5: Team pagination
     console.log('\n5. Team pagination:');
-    const teamPages = await Teams.Get(new TeamFilter({ Page: 1 }));
+    const teamPages = await Teams.Get(new Teams.Filter({ Page: 1 }));
     console.log(`Total teams: ${teamPages.TeamCount}`);
     console.log(`Total pages: ${teamPages.PageCount}`);
     console.log(`Current page has ${teamPages.Count} teams`);
@@ -199,9 +189,9 @@ async function teamExamples() {
 
     // Example 7: Load all team pages
     console.log('\n7. Load all team pages:');
-    const allTeamFilter = new TeamFilter({ 
-        Game: Game.tryGet('mk8dx'),
-        Mode: GameMode.tryGet('200cc')
+    const allTeamFilter = new Teams.Filter({ 
+        Game: Teams.Game.MK8dx,
+        Mode: Teams.GameMode.CC200
     });
     const allTeams = await Teams.Get(allTeamFilter);
     console.log(`Initial load: ${allTeams.Count} teams`);
@@ -264,9 +254,9 @@ async function combinedExamples() {
 
     // Example 3: Country statistics
     console.log('\n3. Players by country:');
-    const countries = [CountryCode.UnitedStates, CountryCode.Germany, CountryCode.Japan];
+    const countries = [Players.CountryCode.UnitedStates, Players.CountryCode.Germany, Players.CountryCode.Japan];
     for (const country of countries) {
-        const filter = new PlayerFilter({ Country: country, Page: 1 });
+        const filter = new Players.Filter({ Country: country, Page: 1 });
         const results = await Players.Get(filter);
         console.log(`${country}: ${results.PlayerCount} players`);
     }

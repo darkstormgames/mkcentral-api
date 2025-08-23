@@ -2,6 +2,9 @@ import { URL } from 'node:url';
 import { fetchHttpsContent } from './common/APIRequest';
 import { Team } from './Team';
 import { TeamFilter } from './team/TeamFilter';
+import { Game } from './common/Game';
+import { GameMode } from './common/GameMode';
+import { Language } from './common/Language';
 
 /**
  * Teams is a typed array of Team items with extra metadata from the API.
@@ -160,4 +163,10 @@ export class Teams extends Array<Team> {
         if (!uri.searchParams.has('page')) uri.searchParams.set('page', '1');
         return uri;
     }
+
+    public static readonly Filter = TeamFilter;
+    public static readonly Item = Team;
+    public static readonly Game = Game;
+    public static readonly GameMode = GameMode;
+    public static readonly Language = Language;
 }
