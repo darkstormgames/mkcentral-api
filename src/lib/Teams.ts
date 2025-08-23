@@ -1,232 +1,163 @@
 import { URL } from 'node:url';
+import { fetchHttpsContent } from './common/APIRequest';
 import { Team } from './Team';
-import * as HTTP from './APIRequest';
+import { TeamFilter } from './team/TeamFilter';
 
+/**
+ * Teams is a typed array of Team items with extra metadata from the API.
+ * Mirrors the structure and behavior of Players.
+ */
 export class Teams extends Array<Team> {
-  /**
-   *
-   * @param {string} rawData Data returned from the API as string.
-   *
-   * Providing no parameter creates an empty list of teams with default options
-   */
-  constructor(rawData?: string) {
-    super();
-    if (!rawData) {
-      this.Count = 0;
-    } else {
-      let parsedData: any = JSON.parse(rawData);
-      this.Count = parsedData.count;
-      for (let team of parsedData.data) {
-        this.push(new Team(team));
-      }
-    }
-    this.Options = new Teams.Options();
-  }
+    /** Number of teams contained in this instance (equals length). */
+    public Count: number;
+    /** Total number of teams available across result set (from API team_count or count). */
+    public TeamCount?: number;
+    /** Total number of pages (from API page_count). */
+    public PageCount?: number;
 
-  /**
-   * Number of teams returned from the API
-   */
-  public Count: number;
+    /** Filter used to produce this list when refreshed via instance Load(). */
+    public Filter: TeamFilter;
 
-  /**
-   * Options for non-static requests.
-   *
-   * Will always have default values upon creation of a new Teams-object.
-   */
-  public Options: Teams.Options;
+    constructor(rawData?: string) {
+        super();
+        this.Filter = TeamFilter.Default();
 
-  /**
-   * Sends a request to the API asynchronously with parameters taken of local Options and updates the local object
-   */
-  public async Get(): Promise<void> {
-    let uri: URL = new URL(
-      `https://www.mariokartcentral.com/mkc/api/registry/teams/category/${this.Options.Category.toString()}`,
-    );
-    uri.searchParams.append('order', this.Options.Order.toString());
-    uri.searchParams.append('language', this.Options.Language.toString());
-    uri.searchParams.append('search', this.Options.Search.toString());
-    while (this.length) {
-      this.pop();
-    }
-    let result: Teams = new Teams(await HTTP.get(uri));
-    this.Count = result.Count;
-    for (let item of result) {
-      this.push(item);
-    }
-  }
+        if (!rawData) {
+            this.Count = 0;
+            return;
+        }
 
-  /**
-   * Sends a request to the API asynchronously with the given parameters and returns the result as a new Teams object
-   * @param {TeamFilter | Category | string | any} options
-   *
-   * Examples:
-   * ```js
-   * let result = await Teams.Get();
-   * let result = await Teams.Get('200cc');
-   * let result = await Teams.Get(Teams.Options.Category.HISTORICAL);
-   * let result = await Teams.Get(new Teams.Options());
-   * let result = await Teams.Get(new Teams.Options({
-   *     Order: Order.REGISTRATION_ASC,
-   *     Language: Language.OTHER
-   * }));
-   * ```
-   */
-  public static async Get(options?: Teams.Options | Teams.Options.Category | string | any): Promise<Teams> {
-    let o: Teams.Options = new Teams.Options();
-    if (options && options instanceof Teams.Options) {
-      o = options;
-    } else if (options && typeof options == 'string') {
-      o.Search = options;
-    }
-    let uri: URL = new URL(`https://www.mariokartcentral.com/mkc/api/registry/teams/category/${o.Category.toString()}`);
-    uri.searchParams.append('order', o.Order.toString());
-    uri.searchParams.append('language', o.Language.toString());
-    uri.searchParams.append('search', o.Search.toString());
-    let result: Teams = new Teams(await HTTP.get(uri));
-    result.Options = o;
-    return result;
-  }
-}
+        const parsed: any = rawData ? JSON.parse(rawData) : null;
 
-export namespace Teams {
-  export class Options {
-    public constructor(
-      options?:
-        | Options
-        | { Category?: Options.Category; Language?: Options.Language; Order?: Options.Order; Search?: string },
-    ) {
-      this.Category = options
-        ? options.Category
-          ? options.Category
-          : Options.Category.ACTIVE
-        : Options.Category.ACTIVE;
-      this.Language = options ? (options.Language ? options.Language : Options.Language.ALL) : Options.Language.ALL;
-      this.Order = options ? (options.Order ? options.Order : Options.Order.NAME_ASC) : Options.Order.NAME_ASC;
-      this.Search = options ? (options.Search ? options.Search : '') : '';
+        // Support multiple possible shapes: team_list (preferred), data (legacy), or teams
+        const list = Array.isArray(parsed?.team_list)
+            ? parsed.team_list
+            : Array.isArray(parsed?.data)
+                ? parsed.data
+                : Array.isArray(parsed?.teams)
+                    ? parsed.teams
+                    : [];
+
+        for (const item of list) this.push(new Team(item));
+
+        this.Count = this.length;
+        const countFallback = typeof parsed?.count === 'number' ? parsed.count : this.length;
+        this.TeamCount = typeof parsed?.team_count === 'number' ? parsed.team_count : countFallback;
+        this.PageCount = typeof parsed?.page_count === 'number' ? parsed.page_count : undefined;
     }
 
-    public Category: Options.Category;
-
-    public Language: Options.Language;
-
-    public Order: Options.Order;
-
-    public Search: string;
-  }
-
-  export namespace Options {
-    /**
-     * Categories for teams appended to .../registry/teams/category/
-     *
-     * Default: .../registry/teams/category/active
-     */
-    export enum Category {
-      /**
-       * All Active Teams
-       */
-      ALL = 'active',
-      /**
-       * All Active Teams
-       */
-      ACTIVE = 'active',
-      /**
-       * All Active 150cc Teams
-       */
-      '150CC' = '150cc',
-      /**
-       * All Active 200cc Teams
-       */
-      '200CC' = '200cc',
-      /**
-       * All Active MK Tour Teams
-       */
-      MKTOUR = 'mktour_vs',
-      /**
-       * All Inactive/Old Teams
-       */
-      HISTORICAL = 'historical',
+    /** Refresh this instance using its Filter to fetch fresh data. */
+    public async Load(): Promise<void> {
+        const uri = Teams.buildURL(this.Filter);
+        const result = new Teams(await fetchHttpsContent(uri));
+        // Replace contents while preserving this instance
+        this.length = 0;
+        for (const t of result) this.push(t);
+        this.Count = result.Count;
+        this.TeamCount = result.TeamCount;
+        this.PageCount = result.PageCount;
+        // Ensure pagination state has a defined page
+        if (typeof this.Filter.Page !== 'number' || this.Filter.Page < 1) this.Filter.Page = 1;
     }
 
     /**
-     * Languages to filter teams as parameter
-     *
-     * Default: language=all
+     * Reload the list with the next page, if available.
+     * Returns true if the page advanced and data was loaded; false if already at last page.
      */
-    export enum Language {
-      /**
-       * Every available language
-       */
-      ALL = 'all',
-      /**
-       * English teams only
-       */
-      ENGLISH = 'English',
-      /**
-       * French teams only
-       */
-      FRENCH = 'French',
-      /**
-       * German teams only
-       */
-      GERMAN = 'German',
-      /**
-       * Portuguese teams only
-       */
-      PORTUGUESE = 'Portuguese',
-      /**
-       * Spanish teams only
-       */
-      SPANISH = 'Spanish',
-      /**
-       * Teams without default language
-       */
-      OTHER = 'other',
+    public async LoadNextPage(): Promise<boolean> {
+        const current = typeof this.Filter?.Page === 'number' && this.Filter.Page > 0 ? this.Filter.Page : 1;
+        if (typeof this.PageCount === 'number' && current >= this.PageCount) return false;
+        this.Filter.Page = current + 1;
+        await this.Load();
+        return true;
     }
 
     /**
-     * Sort parameter for team queries
-     *
-     * Default: order=NA
+     * Reload the list with the previous page, if available.
+     * Returns true if the page moved back and data was loaded; false if already at page 1.
      */
-    export enum Order {
-      /**
-       * DEFAULT
-       *
-       * Order by name ascending.
-       *
-       * Valid in every category.
-       */
-      NAME_ASC = 'NA',
-      /**
-       * Order by name descending.
-       *
-       * Valid in every category.
-       */
-      NAME_DESC = 'ND',
-      /**
-       * Order by latest team registration.
-       *
-       * Valid categories: 150cc, 200cc, mktour
-       */
-      REGISTRATION_ASC = 'RA',
-      /**
-       * Order by latest team registration.
-       *
-       * Valid categories: 150cc, 200cc, mktour
-       */
-      REGISTRATION_DESC = 'RD',
-      /**
-       * Order by player registration date ascending.
-       *
-       * Valid in every category.
-       */
-      STATUS_ASC = 'SA',
-      /**
-       * Order by player registration date descending.
-       *
-       * Valid in every category.
-       */
-      STATUS_DESC = 'SD',
+    public async LoadPreviousPage(): Promise<boolean> {
+        const current = typeof this.Filter?.Page === 'number' && this.Filter.Page > 0 ? this.Filter.Page : 1;
+        if (current <= 1) return false;
+        this.Filter.Page = current - 1;
+        await this.Load();
+        return true;
     }
-  }
+
+    /**
+     * Load all entries from every available page into this instance.
+     * Aggregates results across pages for the current filter and replaces the list contents.
+     */
+    public async LoadAllPages(): Promise<void> {
+        const base = this.Filter ?? TeamFilter.Default();
+        const tempFilter = new TeamFilter(base as unknown as Partial<TeamFilter>);
+        const all: Team[] = [];
+
+        let page = 1;
+        let pageCount: number | undefined;
+        let teamCount: number | undefined;
+
+        while (true) {
+            tempFilter.Page = page;
+            const uri = Teams.buildURL(tempFilter);
+            const chunk = new Teams(await fetchHttpsContent(uri));
+
+            if (page === 1) {
+                pageCount = chunk.PageCount;
+                teamCount = chunk.TeamCount;
+            }
+
+            if (chunk.length === 0) break;
+
+            for (const t of chunk) all.push(t);
+
+            if (typeof pageCount === 'number' && page >= pageCount) break;
+            page++;
+        }
+
+        // Replace contents while preserving identity
+        this.length = 0;
+        for (const t of all) this.push(t);
+        this.Count = this.length;
+        this.TeamCount = typeof teamCount === 'number' ? teamCount : this.length;
+        this.PageCount = pageCount;
+        // After aggregating, normalize page to 1 for the filter
+        this.Filter.Page = 1;
+    }
+
+    /**
+     * Perform a teams query and return a new Teams instance.
+     * - If arg is a string, it is used as the 'name_or_tag' query.
+     * - If arg is a filter, use its fields.
+     */
+    public static async Get(arg?: TeamFilter | Partial<TeamFilter> | string): Promise<Teams> {
+        let filter: TeamFilter;
+        if (typeof arg === 'string') {
+            filter = TeamFilter.Default();
+            const s = arg.trim();
+            if (s.length > 0) filter.NameOrTag = s;
+        } else {
+            filter = arg instanceof TeamFilter ? arg : new TeamFilter(arg as Partial<TeamFilter>);
+        }
+
+        const uri = Teams.buildURL(filter);
+        const res = new Teams(await fetchHttpsContent(uri));
+		// Ensure prototype is set correctly (fixes Array subclass issues)
+		Object.setPrototypeOf(res, Teams.prototype);
+		if (typeof filter.Page !== 'number' || filter.Page < 1) filter.Page = 1;
+        res.Filter = filter;
+        return res;
+    }
+
+    private static buildURL(filter: TeamFilter): URL {
+        const uri = new URL('https://mkcentral.com/api/registry/teams');
+        const qs = filter.ToQueryString();
+        if (qs) uri.search = qs;
+		if (!uri.searchParams.has('is_historical')) uri.searchParams.set('is_historical', 'false');
+		if (!uri.searchParams.has('is_active')) uri.searchParams.set('is_active', 'true');
+		if (!uri.searchParams.has('sort_by_newest')) uri.searchParams.set('sort_by_newest', 'false');
+		if (!uri.searchParams.has('min_player_count')) uri.searchParams.set('min_player_count', '6');
+        if (!uri.searchParams.has('page')) uri.searchParams.set('page', '1');
+        return uri;
+    }
 }

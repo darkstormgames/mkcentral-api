@@ -1,381 +1,160 @@
 import { URL } from 'node:url';
+import { fetchHttpsContent } from './common/APIRequest';
 import { Player } from './Player';
-import * as HTTP from './APIRequest';
+import { PlayerFilter } from './player/PlayerFilter';
 
+/**
+ * Players is a typed array of Player items with extra metadata from the API.
+ * Uses PlayerFilter for querying.
+ */
 export class Players extends Array<Player> {
-  /**
-   *
-   * @param {string} rawData Data returned from the API as string.
-   *
-   * Providing no parameter creates an empty list of teams with default options
-   */
-  constructor(rawData?: string) {
-    super();
-    if (!rawData) {
-      this.Count = 0;
-    } else {
-      let parsedData: any = JSON.parse(rawData);
-      this.Count = parsedData.count;
-      for (let player of parsedData.data) {
-        this.push(new Player(player));
-      }
-    }
-    this.Options = new Players.Options();
-  }
+	/** Number of players contained in this instance (equals length). */
+	public Count: number;
+	/** Total number of players available across result set (from API player_count). */
+	public PlayerCount?: number;
+	/** Total number of pages (from API page_count). */
+	public PageCount?: number;
 
-  /**
-   * Number of teams returned from the API
-   */
-  public Count: number;
+	/** Filter used to produce this list when refreshed via instance Get(). */
+	public Filter: PlayerFilter;
 
-  /**
-   * Options for non-static requests.
-   *
-   * Will always have default values upon creation of a new Teams-object.
-   */
-  public Options: Players.Options;
+	constructor(rawData?: string) {
+		super();
+		this.Filter = PlayerFilter.Default();
 
-  /**
-   * Sends a request to the API asynchronously with parameters taken of local Options and updates the local object
-   */
-  public async Get(): Promise<void> {
-    let uri: URL = new URL(
-      `https://www.mariokartcentral.com/mkc/api/registry/teams/category/${this.Options.Category.toString()}`,
-    );
-    uri.searchParams.append('order', this.Options.Order.toString());
-    uri.searchParams.append('country', this.Options.Country.toString());
-    uri.searchParams.append('search', this.Options.Search.toString());
-    while (this.length) {
-      this.pop();
-    }
-    let result: Players = new Players(await HTTP.get(uri));
-    this.Count = result.Count;
-    for (let item of result) {
-      this.push(item);
-    }
-  }
+		if (!rawData) {
+			this.Count = 0;
+			return;
+		}
 
-  /**
-   * Sends a request to the API asynchronously with the given parameters and returns the result as a new Teams object
-   * @param {Players.Options | Category | string | any} options
-   *
-   * Examples:
-   * ```js
-   * let result = await Players.Get();
-   * let result = await Players.Get('200cc');
-   * let result = await Players.Get(Players.Options.Category.SHADOW);
-   * let result = await Players.Get(new Players.Options());
-   * let result = await Players.Get(new Players.Options({
-   *     Order: Order.REGISTRATION_TEAM_ASC,
-   *     Country: Country.Unknown
-   * }));
-   * ```
-   */
-  public static async Get(options?: Players.Options | Players.Options.Category | string | any): Promise<Players> {
-    let o: Players.Options = new Players.Options();
-    // if (options && options instanceof Players.Options.Category) {
-    //   o.Category = options;
-    // } else
-    if (options && options instanceof Players.Options) {
-      o = options;
-    } else if (options && typeof options == 'string') {
-      o.Search = options;
-    }
-    let uri: URL = new URL(
-      `https://www.mariokartcentral.com/mkc/api/registry/players/category/${o.Category.toString()}`,
-    );
-    uri.searchParams.append('order', o.Order.toString());
-    uri.searchParams.append('country', o.Country.toString());
-    uri.searchParams.append('search', o.Search.toString());
-    let result: Players = new Players(await HTTP.get(uri));
-    result.Options = o;
-    return result;
-  }
+		const parsed: any = JSON.parse(rawData);
+		const list = Array.isArray(parsed.player_list) ? parsed.player_list : [];
+
+		for (const item of list) this.push(new Player(item));
+
+		this.Count = this.length;
+		this.PlayerCount = typeof parsed.player_count === 'number' ? parsed.player_count : this.length;
+		this.PageCount = typeof parsed.page_count === 'number' ? parsed.page_count : undefined;
+	}
+
+	/** Refresh this instance using its Filter to fetch fresh data. */
+	public async Load(): Promise<void> {
+		const uri = Players.buildURL(this.Filter);
+		const result = new Players(await fetchHttpsContent(uri));
+		// Replace contents while preserving this instance
+		this.length = 0;
+		for (const p of result) this.push(p);
+		this.Count = result.Count;
+		this.PlayerCount = result.PlayerCount;
+		this.PageCount = result.PageCount;
+
+		// Ensure pagination state has a defined page
+		if (typeof this.Filter.Page !== 'number' || this.Filter.Page < 1) this.Filter.Page = 1;
+	}
+
+	/**
+	 * Reload the list with the next page, if available.
+	 * Returns true if the page advanced and data was loaded; false if already at last page.
+	 */
+	public async LoadNextPage(): Promise<boolean> {
+		const current = typeof this.Filter?.Page === 'number' && this.Filter.Page > 0 ? this.Filter.Page : 1;
+		if (typeof this.PageCount === 'number' && current >= this.PageCount) return false;
+		this.Filter.Page = current + 1;
+		await this.Load();
+		return true;
+	}
+
+	/**
+	 * Reload the list with the previous page, if available.
+	 * Returns true if the page moved back and data was loaded; false if already at page 1.
+	 */
+	public async LoadPreviousPage(): Promise<boolean> {
+		const current = typeof this.Filter?.Page === 'number' && this.Filter.Page > 0 ? this.Filter.Page : 1;
+		if (current <= 1) return false;
+		this.Filter.Page = current - 1;
+		await this.Load();
+		return true;
+	}
+
+	/**
+	 * Load all entries from every available page into this instance.
+	 * Aggregates results across pages for the current filter and replaces the list contents.
+	 */
+	public async LoadAllPages(): Promise<void> {
+		const base = this.Filter ?? PlayerFilter.Default();
+		const tempFilter = new PlayerFilter(base as unknown as Partial<PlayerFilter>);
+		const all: Player[] = [];
+
+		let page = 1;
+		let pageCount: number | undefined;
+		let playerCount: number | undefined;
+
+		while (true) {
+			tempFilter.Page = page;
+			const uri = Players.buildURL(tempFilter);
+			const chunk = new Players(await fetchHttpsContent(uri));
+
+			if (page === 1) {
+				pageCount = chunk.PageCount;
+				playerCount = chunk.PlayerCount;
+			}
+
+			if (chunk.length === 0) break;
+
+			for (const p of chunk) all.push(p);
+
+			if (typeof pageCount === 'number' && page >= pageCount) break;
+			page++;
+		}
+
+		// Replace contents while preserving identity
+		this.length = 0;
+		for (const p of all) this.push(p);
+		this.Count = this.length;
+		this.PlayerCount = typeof playerCount === 'number' ? playerCount : this.length;
+		this.PageCount = pageCount;
+
+		// After aggregating, normalize page to 1 for the filter
+		this.Filter.Page = 1;
+	}
+
+	/**
+	 * Perform a players query and return a new Players instance
+	 */
+	public static async Get(arg?: PlayerFilter | Partial<PlayerFilter> | string): Promise<Players> {
+		let filter: PlayerFilter;
+
+		if (typeof arg === 'string') {
+			filter = PlayerFilter.Default();
+			const s = arg.trim();
+			if (s.length > 0) filter.NameOrFC = s;
+		} else {
+			filter = arg instanceof PlayerFilter ? arg : new PlayerFilter(arg as Partial<PlayerFilter>);
+		}
+
+		const uri = Players.buildURL(filter);
+		const res = new Players(await fetchHttpsContent(uri));
+		// Ensure prototype is set correctly (fixes Array subclass issues)
+		Object.setPrototypeOf(res, Players.prototype);
+		if (typeof filter.Page !== 'number' || filter.Page < 1) filter.Page = 1;
+		res.Filter = filter;
+		return res;
+	}
+
+	private static buildURL(filter: PlayerFilter): URL {
+		const uri = new URL('https://mkcentral.com/api/registry/players');
+		const qs = filter.ToQueryString();
+		if (qs) {
+			// The URL constructor doesn't have a nice bulk setter for params; append directly
+			uri.search = qs;
+		}
+		if (!uri.searchParams.has('detailed')) uri.searchParams.set('detailed', 'true');
+		if (!uri.searchParams.has('matching_fcs_only')) uri.searchParams.set('matching_fcs_only', 'true');
+		if (!uri.searchParams.has('is_banned')) uri.searchParams.set('is_banned', 'false');
+		if (!uri.searchParams.has('is_hidden')) uri.searchParams.set('is_hidden', 'false');
+		if (!uri.searchParams.has('is_shadow')) uri.searchParams.set('is_shadow', 'false');
+		if (!uri.searchParams.has('page')) uri.searchParams.set('page', '1');
+		return uri;
+	}
 }
 
-export namespace Players {
-  export class Options {
-    public constructor(
-      options?:
-        | Options
-        | { Category?: Options.Category; Country?: Options.Country; Order?: Options.Order; Search?: string },
-    ) {
-      this.Category = options ? (options.Category ? options.Category : Options.Category.ALL) : Options.Category.ALL;
-      this.Country = options ? (options.Country ? options.Country : Options.Country.ALL) : Options.Country.ALL;
-      this.Order = options ? (options.Order ? options.Order : Options.Order.NAME_ASC) : Options.Order.NAME_ASC;
-      this.Search = options ? (options.Search ? options.Search : '') : '';
-    }
-
-    public Category: Options.Category;
-
-    public Country: Options.Country;
-
-    public Order: Options.Order;
-
-    public Search: string;
-  }
-
-  export namespace Options {
-    /**
-     * Categories for players appended to .../registry/players/category/
-     *
-     * Default: .../registry/players/category/150cc
-     */
-    export enum Category {
-      /**
-       * All Players
-       */
-      ALL = 'all',
-      /**
-       * All Players in MK8DX 150cc Team
-       */
-      '150CC' = '150cc',
-      /**
-       * All Players in MK8DX 200cc Team
-       */
-      '200CC' = '200cc',
-      /**
-       * All Players in MKTour VS Race Team
-       */
-      MKTOUR = 'mktour_vs',
-      /**
-       * All Players in no Team
-       */
-      SHADOW = 'shadow',
-    }
-
-    /**
-     * Countries to filter players as parameter
-     *
-     * Default: country=ZZ
-     */
-    export enum Country {
-      /**
-       * Every available language
-       */
-      ALL = 'ZZ',
-      Afghanistan = 'AF',
-      Albania = 'AL',
-      Algeria = 'DZ',
-      AmericanSamoa = 'AS',
-      Andorra = 'AD',
-      Antarctica = 'AQ',
-      Argentina = 'AR',
-      Armenia = 'AM',
-      Aruba = 'AW',
-      Australia = 'AU',
-      Austria = 'AT',
-      Azerbaijan = 'AZ',
-      Bahamas = 'BS',
-      Bahrain = 'BH',
-      Bangladesh = 'BD',
-      Barbados = 'BB',
-      Belarus = 'BY',
-      Belgium = 'BE',
-      Bolivia = 'BO',
-      BonaireSintEustatiusAndSaba = 'BQ',
-      BosniaAndHerzegovina = 'BA',
-      Brazil = 'BR',
-      BritishIndianOceanTerritory = 'IO',
-      Canada = 'CA',
-      Chile = 'CL',
-      China = 'CN',
-      Colombia = 'CO',
-      Congo = 'CG',
-      CostaRica = 'CR',
-      Croatia = 'HR',
-      Cuba = 'CU',
-      Cyprus = 'CY',
-      CzechRepublic = 'CZ',
-      Denmark = 'DK',
-      DominicanRepublic = 'DO',
-      Ecuador = 'EC',
-      Egypt = 'EG',
-      ElSalvador = 'SV',
-      Estonia = 'EE',
-      Finland = 'FI',
-      France = 'FR',
-      FrenchPolynesia = 'PF',
-      Georgia = 'GE',
-      Germany = 'DE',
-      Greece = 'GR',
-      Guam = 'GU',
-      Guatemala = 'GT',
-      Honduras = 'HN',
-      HongKong = 'HK',
-      Hungary = 'HU',
-      Iceland = 'IS',
-      India = 'IN',
-      Indonesia = 'ID',
-      Ireland = 'IE',
-      Israel = 'IL',
-      Italy = 'IT',
-      Jamaica = 'JM',
-      Japan = 'JP',
-      Jersey = 'JE',
-      Jordan = 'JO',
-      Kenya = 'KE',
-      Latvia = 'LV',
-      Lebanon = 'LB',
-      Luxembourg = 'LU',
-      Macao = 'MO',
-      Madagascar = 'MG',
-      Malaysia = 'MY',
-      Malta = 'MT',
-      Mexico = 'MX',
-      Morocco = 'MA',
-      Netherlands = 'NL',
-      NewCaledonia = 'NC',
-      NewZealand = 'NZ',
-      Nicaragua = 'NI',
-      Niger = 'NE',
-      Norway = 'NO',
-      Panama = 'PA',
-      Paraguay = 'PY',
-      Peru = 'PE',
-      Philippines = 'PH',
-      Poland = 'PL',
-      Portugal = 'PT',
-      PuertoRico = 'PR',
-      Romania = 'RO',
-      Russia = 'RU',
-      Reunion = 'RE',
-      SaudiArabia = 'SA',
-      SierraLeone = 'LS',
-      Singapore = 'SG',
-      Slovakia = 'SK',
-      Slovenia = 'SI',
-      SouthAfrica = 'ZA',
-      SouthGeorgiaAndTheSouthSandwichIslands = 'GS',
-      SouthKorea = 'KR',
-      Spain = 'ES',
-      SriLanka = 'LK',
-      Sudan = 'SD',
-      Sweden = 'SE',
-      Switzerland = 'CH',
-      Taiwan = 'TW',
-      Thailand = 'TH',
-      TrinidadAndTobago = 'TT',
-      Tunisia = 'TN',
-      Turkey = 'TR',
-      USVirginIslands = 'VI',
-      Ukraine = 'UA',
-      UnitedArabEmirates = 'AE',
-      UnitedKingdom = 'GB',
-      UnitedStates = 'US',
-      /**
-       * Every unknown language
-       */
-      Unknown = 'XX',
-      Uruguay = 'UY',
-      Venezuela = 'VE',
-      Zimbabwe = 'ZW',
-    }
-
-    /**
-     * Sort parameter for player queries
-     *
-     * Default: order=NA
-     */
-    export enum Order {
-      /**
-       * DEFAULT
-       *
-       * Order by name ascending.
-       *
-       * Valid in every category.
-       */
-      NAME_ASC = 'NA',
-      /**
-       * Order by name descending.
-       *
-       * Valid in every category.
-       */
-      NAME_DESC = 'ND',
-      /**
-       * Order by friendcode ascending.
-       *
-       * Uses the `custom_field`, which is the FC of the corresponding game to the category.
-       */
-      FC_ASC = 'FA',
-      /**
-       * Order by friendcode descending.
-       *
-       * Uses the `custom_field`, which is the FC of the corresponding game to the category.
-       */
-      FC_DESC = 'FD',
-      /**
-       * Order by switch friendcode ascending.
-       *
-       * Valid categories: all, shadow
-       */
-      // FC_SWITCH_ASC = 'SFA',
-      /**
-       * Order by switch friendcode descending.
-       *
-       * Valid categories: all, shadow
-       */
-      // FC_SWITCH_DESC = 'SFD',
-      /**
-       * Order by mktour friendcode ascending.
-       *
-       * Valid categories: all, shadow
-       */
-      // FC_TOUR_ASC = 'TFA',
-      /**
-       * Order by mktour friendcode descending.
-       *
-       * Valid categories: all, shadow
-       */
-      // FC_TOUR_DESC = 'TFD',
-      /**
-       * Order by 3DS friendcode ascending.
-       *
-       * Valid categories: all, shadow
-       */
-      // FC_3DS_ASC = '3FA',
-      /**
-       * Order by 3DS friendcode descending.
-       *
-       * Valid categories: all, shadow
-       */
-      // FC_3DS_DESC = '3FD',
-      /**
-       * Order by NNID ascending.
-       *
-       * Valid categories: all, shadow
-       */
-      // FC_NNID_ASC = 'UFA',
-      /**
-       * Order by NNID descending.
-       *
-       * Valid categories: all, shadow
-       */
-      // FC_NNID_DESC = 'UFD',
-      /**
-       * Order by latest team registration.
-       *
-       * Valid categories: 150cc, 200cc, mktour
-       */
-      REGISTRATION_TEAM_ASC = 'TA',
-      /**
-       * Order by latest team registration.
-       *
-       * Valid categories: 150cc, 200cc, mktour
-       */
-      REGISTRATION_TEAM_DESC = 'TD',
-      /**
-       * Order by player registration date ascending.
-       *
-       * Valid in every category.
-       */
-      REGISTRATION_PLAYER_ASC = 'RA',
-      /**
-       * Order by player registration date descending.
-       *
-       * Valid in every category.
-       */
-      REGISTRATION_PLAYER_DESC = 'RD',
-    }
-  }
-}

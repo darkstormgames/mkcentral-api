@@ -1,204 +1,181 @@
-import * as HTTP from './APIRequest';
-import { URL } from 'node:url';
-import { Team } from './Team';
+import { CountryCode } from "./common/CountryCode";
+import { toNullableBoolean } from "./common/Helpers";
+import { fetchHttpsContent } from "./common/APIRequest";
+import { Roster } from "./common/Roster";
+import { BanInfo } from "./player/BanInfo";
+import { Discord } from "./player/Discord";
+import { FriendCode } from "./player/FriendCode";
+import { NameChange } from "./player/NameChanges";
+import type { Notes } from "./player/Notes";
+import { Role } from "./player/Roles";
+import { UserSettings } from "./player/UserSettings";
 
-export class Player {
-  constructor(playerData: string | number | any) {
-    if (typeof playerData == 'string') {
-      let data = JSON.parse(playerData);
-      this.Id = data.id;
-      this.UserId = data.user_id;
-      this.RegisteredDate = new Date(data.registered_at.date);
-      this.RegisteredDateHuman = data.registered_at_human;
-      this.TeamRegisteredDate = null;
-      this.TeamRegisteredDateHuman = null;
-      this.Name = data.display_name;
-      this.Status = data.player_status;
-      this.IsBanned = data.is_banned;
-      this.BanReason = data.ban_reason;
-      this.IsHidden = data.is_hidden == 0 ? false : true;
-      this.CountryCode = data.country_code;
-      this.CountryName = data.country_name;
-      this.Region = data.region;
-      this.City = data.city;
-      this.DiscordPrivacy = data.discord_privacy;
-      this.DiscordTag = data.discord_tag;
-      this.SwitchFC = data.switch_fc;
-      this.NNID = data.nnid;
-      this.FC3DS = data.fc_3ds;
-      this.MKTourFC = data.mktour_fc;
-      this.ProfilePicture = data.profile_picture;
-      this.ProfilePictureBorderColor = data.profile_picture_border_color;
-      this.ProfileMessage = data.profile_message;
-      this.IsSupporter = data.is_supporter;
-      this.IsAdministrator = data.is_administrator;
-      this.IsModerator = data.is_moderator;
-      this.IsGlobalEventAdmin = data.is_global_event_admin;
-      this.IsGlobalEventMod = data.is_global_event_mod;
-      this.IsEventAdmin = data.is_event_admin;
-      this.IsEventMod = data.is_event_mod;
-      this.CurrentTeams = [];
-      for (let team of data.current_teams) {
-        this.CurrentTeams.push(new Player.CurrentTeam(team));
-      }
-    } else {
-      this.Id = playerData.player_id;
-      this.UserId = playerData.user_id;
-      this.RegisteredDate = new Date(playerData.registered_at);
-      this.RegisteredDateHuman = playerData.registered_at_human;
-      this.TeamRegisteredDate = !playerData.team_registered_at ? null : new Date(playerData.team_registered_at);
-      this.TeamRegisteredDateHuman = !playerData.team_registered_at_human ? null : playerData.team_registered_at_human;
-      this.Name = playerData.display_name;
-      this.Status = playerData.player_status;
-      this.CountryCode = playerData.country_code;
-      this.CountryName = playerData.country_name;
-      this.SwitchFC = playerData.switch_fc;
-      this.NNID = playerData.nnid;
-      this.FC3DS = playerData.fc_3ds;
-      this.MKTourFC = playerData.mktour_fc;
-    }
-  }
-
-  /**
-   * Registry id for the corresponding player
-   */
-  public Id: number;
-  /**
-   * Forum id for the corresponding player
-   */
-  public UserId: number;
-  /**
-   * The date on which the user has registered in the mkc registry
-   */
-  public RegisteredDate: Date;
-  /**
-   * A human-readable string for the registration date
-   */
-  public RegisteredDateHuman: string;
-  /**
-   * The date on which the user joined their team
-   *
-   * Only available with category filter in Players collection
-   */
-  public TeamRegisteredDate: Date | null;
-  /**
-   * A human-readable string for the team joining date
-   *
-   * Only available with category filter in Players collection
-   */
-  public TeamRegisteredDateHuman: string | null;
-  /**
-   * The users name in the registry
-   */
-  public Name: string;
-  public Status: string | null;
-  public IsBanned?: boolean | null;
-  public BanReason?: string | null;
-  public IsHidden?: boolean | null;
-  public CountryCode: string;
-  public CountryName: string;
-  public Region?: string | null;
-  public City?: string | null;
-  public DiscordPrivacy?: string | null;
-  public DiscordTag?: string | null;
-  public SwitchFC: string | null;
-  public NNID: string | null;
-  public FC3DS: string | null;
-  public MKTourFC: string | null;
-  public ProfilePicture?: string | null;
-  public ProfilePictureBorderColor?: number;
-  public ProfileMessage?: string;
-  public IsSupporter?: boolean;
-  public IsAdministrator?: boolean;
-  public IsModerator?: boolean;
-  public IsGlobalEventAdmin?: boolean;
-  public IsGlobalEventMod?: boolean;
-  public IsEventAdmin?: boolean;
-  public IsEventMod?: boolean;
-
-  /**
-   * Only available with category filter in Players collection
-   */
-  public CurrentTeam?: Player.CurrentTeam;
-  /**
-   * Only available when directly loading the player
-   */
-  public CurrentTeams?: Player.CurrentTeam[];
-
-  public async Load(): Promise<void> {
-    let player = await Player.Get(this.Id);
-    this.Id = player.Id;
-    this.UserId = player.UserId;
-    this.RegisteredDate = player.RegisteredDate;
-    this.RegisteredDateHuman = player.RegisteredDateHuman;
-    this.TeamRegisteredDate = null;
-    this.TeamRegisteredDateHuman = null;
-    this.Name = player.Name;
-    this.Status = player.Status;
-    this.IsBanned = player.IsBanned;
-    this.BanReason = player.BanReason;
-    this.IsHidden = player.IsHidden;
-    this.CountryCode = player.CountryCode;
-    this.CountryName = player.CountryName;
-    this.Region = player.Region;
-    this.City = player.City;
-    this.DiscordPrivacy = player.DiscordPrivacy;
-    this.DiscordTag = player.DiscordTag;
-    this.SwitchFC = player.SwitchFC;
-    this.NNID = player.NNID;
-    this.FC3DS = player.FC3DS;
-    this.MKTourFC = player.MKTourFC;
-    this.ProfilePicture = player.ProfilePicture;
-    this.ProfilePictureBorderColor = player.ProfilePictureBorderColor;
-    this.ProfileMessage = player.ProfileMessage;
-    this.IsSupporter = player.IsSupporter;
-    this.IsAdministrator = player.IsAdministrator;
-    this.IsModerator = player.IsModerator;
-    this.IsGlobalEventAdmin = player.IsGlobalEventAdmin;
-    this.IsGlobalEventMod = player.IsGlobalEventMod;
-    this.IsEventAdmin = player.IsEventAdmin;
-    this.IsEventMod = player.IsEventMod;
-    this.CurrentTeams = player.CurrentTeams;
-  }
-
-  /**
-   * Sends a request to the API asynchronously with the given parameters and returns the result as a new Team object
-   * @param {number} teamId
-   *
-   * Examples:
-   * ```js
-   * let result = await Team.Get(10);
-   * ```
-   */
-  public static async Get(playerId: number): Promise<Player> {
-    let uri: URL = new URL(`https://www.mariokartcentral.com/mkc/api/registry/players/${playerId}`);
-    return new Player(await HTTP.get(uri));
-  }
+export enum PlayerDataKind {
+	Full = "full",
+	List = "list",
+	Roster = "roster",
 }
 
-export namespace Player {
-  export class CurrentTeam {
-    constructor(teamData: any) {
-      this.Mode = teamData.mode;
-      this.ModeTitle = teamData.mode_title;
-      this.ModeKey = teamData.mode_key;
-      this.TeamId = teamData.team_id;
-      this.TeamName = teamData.team_name;
-      this.TeamTag = teamData.team_tag;
-      this.TeamStatus = teamData.team_status;
-    }
+export class Player {
+	/** Unique ID of the player */
+	public Id: number | null;
+	/** Player name */
+	public Name: string | null;
+	/** ISO-3166-1 alpha-2 country code */
+	public CountryCode: CountryCode | null;
 
-    public Mode?: string;
-    public ModeTitle?: string;
-    public ModeKey?: string;
-    public TeamId: number;
-    public TeamName: string;
-    public TeamTag: string;
-    public TeamStatus: string;
-    public TeamColor?: number;
+	/** Whether the player is hidden */
+	public IsHidden: boolean | null;
+	/** Whether the player is a shadow account */
+	public IsShadow: boolean | null;
+	/** Whether the player is banned */
+	public IsBanned: boolean | null;
 
-    public async GetTeam(): Promise<Team> {
-      return await Team.Get(this.TeamId);
-    }
-  }
+	/** Join date (unix timestamp) */
+	public JoinDate: number | null;
+
+	/** Discord info */
+	public Discord: Discord | null;
+	/** Friend codes */
+	public FriendCodes: FriendCode[];
+	/** Rosters this player is on (full/list variants) */
+	public Rosters: Roster[];
+
+	/** Ban info (null in many public contexts) */
+	public BanInfo: BanInfo | null;
+	/** User settings (null in many public contexts) */
+	public UserSettings: UserSettings | null;
+	/** Name change history */
+	public NameChanges: NameChange[];
+	/** Notes (Seemingly always null in public contexts) */
+	public Notes: Notes | null;
+	/** Roles */
+	public Roles: Role[];
+
+	/** Roster-embedded only: is leader */
+	public IsLeader: boolean | null;
+	/** Roster-embedded only: is manager */
+	public IsManager: boolean | null;
+	/** Roster-embedded only: bagger clause flag */
+	public IsBaggerClause: boolean | null;
+
+	/** Indicates which data shape was parsed */
+	public DataKind: PlayerDataKind;
+	/** Convenience flag for full player payloads */
+	public IsFull: boolean;
+
+	constructor(data: string | object) {
+		let obj: any;
+		if (typeof data === "string") {
+			obj = JSON.parse(data);
+		} else {
+			obj = data ?? {};
+		}
+
+		// Determine which variant we're dealing with
+		const looksRoster =
+			("player_id" in obj && !("id" in obj)) ||
+			("is_leader" in obj) ||
+			("is_manager" in obj) ||
+			("is_bagger_clause" in obj);
+
+		let kind: PlayerDataKind;
+		if (looksRoster) {
+			kind = PlayerDataKind.Roster;
+		} else {
+			// ToDo: Check key availability for full/list objects
+			const fullKeys = ["roles", "rosters", "ban_info", "user_settings", "name_changes", "notes"];
+			const hasAllFullKeys = fullKeys.every((k) => k in obj);
+			kind = hasAllFullKeys ? PlayerDataKind.Full : PlayerDataKind.List;
+		}
+		this.DataKind = kind;
+		this.IsFull = kind === PlayerDataKind.Full;
+
+		// Common mappings
+		this.Id = obj.id ?? obj.player_id ?? null;
+		this.Name = obj.name ?? null;
+		this.CountryCode = (obj.country_code ?? null) as CountryCode | null;
+
+		this.IsHidden = toNullableBoolean(obj.is_hidden);
+		this.IsShadow = toNullableBoolean(obj.is_shadow);
+		this.IsBanned = toNullableBoolean(obj.is_banned);
+
+		this.JoinDate = obj.join_date ?? null;
+
+		this.Discord = obj.discord ? new Discord(obj.discord) : null;
+
+		this.FriendCodes = Array.isArray(obj.friend_codes)
+			? obj.friend_codes.map((fc: any) => new FriendCode(fc))
+			: [];
+
+		// Roster-embedded specific flags
+		this.IsLeader = toNullableBoolean(obj.is_leader);
+		this.IsManager = toNullableBoolean(obj.is_manager);
+		this.IsBaggerClause = toNullableBoolean(obj.is_bagger_clause);
+
+		// Full/List specific collections and objects
+		this.Rosters = Array.isArray(obj.rosters)
+			? obj.rosters.map((r: any) => new Roster(r))
+			: [];
+
+		this.BanInfo = obj.ban_info ? new BanInfo(obj.ban_info) : null;
+		this.UserSettings = obj.user_settings ? new UserSettings(obj.user_settings) : null;
+
+		this.NameChanges = Array.isArray(obj.name_changes)
+			? obj.name_changes.map((nc: any) => new NameChange(nc))
+			: [];
+
+		// Notes are always null publicly; avoid circular imports at runtime.
+		this.Notes = null;
+
+		// Roles can be numeric IDs, strings, or objects; Role handles all
+		this.Roles = Array.isArray(obj.roles)
+			? obj.roles.map((r: any) => new Role(r))
+			: [];
+	}
+
+	/**
+	 * Fetch a player's full profile by id and return a populated Player instance.
+	 */
+	public static async Get(playerId: number): Promise<Player> {
+		if (playerId == null || Number.isNaN(playerId)) {
+			throw new TypeError("playerId must be a valid number");
+		}
+		const url = `https://mkcentral.com/api/registry/players/${encodeURIComponent(playerId)}`;
+		const json = await fetchHttpsContent(url);
+		return new Player(json);
+	}
+
+	/**
+	 * Load this player's full profile into the current instance (no object replacement).
+	 * If the instance is already full, this is a no-op.
+	 */
+	public async Load(): Promise<void> {
+		if (this.IsFull) return;
+		if (this.Id == null) {
+			throw new Error("Cannot load player without an Id");
+		}
+		const full = await Player.Get(this.Id);
+		// Copy properties to preserve object identity
+		this.Id = full.Id;
+		this.Name = full.Name;
+		this.CountryCode = full.CountryCode;
+		this.IsHidden = full.IsHidden;
+		this.IsShadow = full.IsShadow;
+		this.IsBanned = full.IsBanned;
+		this.JoinDate = full.JoinDate;
+		this.Discord = full.Discord;
+		this.FriendCodes = full.FriendCodes;
+		this.Rosters = full.Rosters;
+		this.BanInfo = full.BanInfo;
+		this.UserSettings = full.UserSettings;
+		this.NameChanges = full.NameChanges;
+		this.Notes = full.Notes;
+		this.Roles = full.Roles;
+		// this.IsLeader = full.IsLeader;
+		// this.IsManager = full.IsManager;
+		// this.IsBaggerClause = full.IsBaggerClause;
+		this.DataKind = full.DataKind;
+		this.IsFull = full.IsFull;
+	}
 }
