@@ -2,69 +2,37 @@ import { FriendCodeType } from './FriendCode';
 import { CountryCode } from '../common/CountryCode';
 
 export class PlayerFilter {
-    /**
-    * Filter by player name only
-    */
+    /** Filter by player name only */
     public Name: string | null = null;
-    /**
-    * Filter by player Friend Code only
-    */
+    /** Filter by player Friend Code only */
     public FriendCode: string | null = null;
-    /**
-    * Name or friend code search
-    */
+    /** Name or friend code search */
     public NameOrFC: string | null = null;
-    /**
-    * Type of friend code to match
-    */
+    /** Type of friend code to match */
     public FCType: FriendCodeType | null = null;
-    /**
-    * Country code to filter
-    */
+    /** Country code to filter */
     public Country: CountryCode | null = null;
-    /**
-    * Filter hidden players
-    */
+    /** Filter hidden players */
     public IsHidden: boolean | null = null;
-    /**
-    * Filter shadow players
-    */
+    /** Filter shadow players */
     public IsShadow: boolean | null = null;
-    /**
-    * Filter banned players
-    */
+    /** Filter banned players */
     public IsBanned: boolean | null = null;
-    /**
-    * Discord user ID to filter
-    */
+    /** Discord user ID to filter */
     public DiscordId: string | null = null;
-    /**
-    * Request detailed player data
-    */
+    /** Request detailed player data */
     public Detailed: boolean | null = null;
-    /**
-    * Page number for results
-    */
+    /** Page number for results */
     public Page: number | null = null;
-    /**
-    * Registration ID to filter
-    */
+    /** Registration ID to filter */
     public RegistrationId: number | null = null;
-    /**
-    * Only include players with matching friend codes
-    */
+    /** Only include players with matching friend codes */
     public MatchingFCsOnly: boolean = false;
-    /**
-    * Include banned, hidden, and shadow players in results
-    */
+    /** Include banned, hidden, and shadow players in results */
     public IncludeShadowPlayers: boolean = false;
-    /**
-    * Sort results by newest registration
-    */
+    /** Sort results by newest registration */
     public SortByNewest: boolean | null = false;
-    /**
-    * Filter by connected user presence
-    */
+    /** Filter by connected user presence */
     public HasConnectedUser: boolean | null = null;
 
     constructor(init?: Partial<PlayerFilter>) {
@@ -73,9 +41,10 @@ export class PlayerFilter {
     }
 
     /**
-    * Build a query string of URL parameters from the set fields.
-    * Undefined/null/false values are omitted. Booleans are serialized as 'true'.
-    */
+     * Build a query string of URL parameters from the set fields.
+     * 
+     * Undefined/null/false values are omitted. Booleans are serialized as 'true'.
+     */
     public ToQueryString(): string {
         const params: Record<string, string> = {};
         const add = (k: string, v: unknown) => {
@@ -117,8 +86,8 @@ export class PlayerFilter {
     }
 
     /**
-    * Create a filter with repository defaults
-    */
+     * Create a filter with repository defaults
+     */
     public static Default(): PlayerFilter {
         return new PlayerFilter({
             Name: null,

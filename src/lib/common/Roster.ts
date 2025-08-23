@@ -7,20 +7,15 @@ import { GameMode } from "./GameMode";
 
 // TODO: Consider collapsing Name <-> RosterName | TeamName and Tag <-> RosterTag | TeamTag once usage is audited.
 export class Roster {
-    /** Roster approval status; maps from 'approval_status' (team roster). 
-    * Null when absent. */
+    /** Roster approval status; maps from 'approval_status' (team roster). Null when absent. */
     public ApprovalStatus: string | null;
-    /** Team color; canonical field. Maps from 'color' (team roster) or 'team_color' (player roster). 
-    * Null when absent. */
+    /** Team color; canonical field. Maps from 'color' (team roster) or 'team_color' (player roster). Null when absent. */
     public Color: number | null;
-    /** Roster creation date (unix timestamp); maps from 'creation_date' (team roster). 
-    * Null when absent. */
+    /** Roster creation date (unix timestamp); maps from 'creation_date' (team roster). Null when absent. */
     public CreationDate: number | null;
-    /** Game registry entry; maps from 'game' via Game.tryGet(key). 
-    * Null when unknown or absent. */
+    /** Game registry entry; maps from 'game' via Game.tryGet(key). Null when unknown or absent. */
     public Game: Game | null;
-    /** Canonical roster ID; maps from 'id' (team roster) or 'roster_id' (player roster). 
-    * Null when absent. */
+    /** Canonical roster ID; maps from 'id' (team roster) or 'roster_id' (player roster). Null when absent. */
     public Id: number | null;
     /** Whether the roster is active; maps from 'is_active' (number/boolean -> boolean). Null when absent. */
     public IsActive: boolean | null;

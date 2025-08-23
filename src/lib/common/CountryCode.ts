@@ -1,6 +1,6 @@
 /** 
-* ISO-3166-1 alpha-2 country codes 
-*/
+ * ISO-3166-1 alpha-2 country codes 
+ */
 export enum CountryCode {
     All = "",
     None = "",

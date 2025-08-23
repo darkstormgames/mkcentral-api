@@ -1,3 +1,5 @@
+/* tslint:disable no-console */
+
 import { Player, Players, Team, Teams } from './index';
 
 // ============================================
